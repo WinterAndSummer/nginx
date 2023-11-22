@@ -397,8 +397,9 @@ struct ngx_http_request_s {
                                          /* of ngx_http_upstream_state_t */
 
     ngx_pool_t                       *pool;
+	//这个是接受http头部的缓冲区
     ngx_buf_t                        *header_in;
-
+	//这个是解析后的http头部
     ngx_http_headers_in_t             headers_in;
     ngx_http_headers_out_t            headers_out;
 
@@ -407,10 +408,11 @@ struct ngx_http_request_s {
     time_t                            lingering_time;
     time_t                            start_sec;
     ngx_msec_t                        start_msec;
-
+	//请求的方法，是nginx忽略大小写后解析的方法名字，NGX_HTTP_GET,可以使用method_name拿到字符串
     ngx_uint_t                        method;
+	//http版本，值是NGX_HTTP_VERSION_9
     ngx_uint_t                        http_version;
-
+	//请求行
     ngx_str_t                         request_line;
     ngx_str_t                         uri;
     ngx_str_t                         args;

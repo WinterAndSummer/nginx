@@ -76,11 +76,13 @@
 
 struct ngx_command_s {
     ngx_str_t             name;
-    ngx_uint_t            type;
+    ngx_uint_t            type;//type是指定配置项可以出现的位置，比如出现在server{}
+    //location{}中，以及其携带的参数的个数
     char               *(*set)(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-    ngx_uint_t            conf;
+	//出现了name指定的配置项时，将会调用set方法来处理配置项的参数。
+    ngx_uint_t            conf;//在配置文件中的偏移量
     ngx_uint_t            offset;
-    void                 *post;
+    void                 *post;//配置项读取后的处理方法，必须是ngx_conf_post_t结构指针
 };
 
 #define ngx_null_command  { ngx_null_string, 0, NULL, 0, 0, NULL }

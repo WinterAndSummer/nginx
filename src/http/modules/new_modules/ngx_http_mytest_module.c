@@ -7,15 +7,28 @@ static char *
 ngx_http_mytest(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);  
   
 static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r);  
+/*
+struct ngx_command_s {
+    ngx_str_t             name;
+    ngx_uint_t            type;//type是指定配置项可以出现的位置，比如出现在server{}
+    //location{}中，以及其携带的参数的个数
+    char               *(*set)(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+	//出现了name指定的配置项时，将会调用set方法来处理配置项的参数。
+    ngx_uint_t            conf;//在配置文件中的偏移量
+    ngx_uint_t            offset;
+    void                 *post;//配置项读取后的处理方法，必须是ngx_conf_post_t结构指针
+};
+*/
   
-  
-//处理配置项    
+//处理配置项 
+//遍历模块的ngx_command_t数组，直到ngx_null_command
 static ngx_command_t  ngx_http_mytest_commands[] =  
 {  
   
     {  
         ngx_string("mytest"),  
         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_HTTP_LMT_CONF | NGX_CONF_NOARGS,  
+        //可以放在http{},server{}，location{},limit_except{}中，NGX_CONF_NOARGS就是没有参数
         ngx_http_mytest,  
         NGX_HTTP_LOC_CONF_OFFSET,  
         0,  
@@ -27,10 +40,10 @@ static ngx_command_t  ngx_http_mytest_commands[] =
 //模块上下文  
 static ngx_http_module_t  ngx_http_mytest_module_ctx =  
 {  
-    NULL,                              /* preconfiguration */  
-    NULL,                       /* postconfiguration */  
+    NULL,//解析前                              /* preconfiguration */  
+    NULL,//解析后                       /* postconfiguration */  
   
-    NULL,                              /* create main configuration */  
+    NULL,//                              /* create main configuration */  
     NULL,                              /* init main configuration */  
   
     NULL,                              /* create server configuration */  
@@ -75,7 +88,10 @@ ngx_http_mytest(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     return NGX_CONF_OK;  
 }  
   
-//实际完成处理的回调函数    
+//实际完成处理的回调函数 
+//这里的返回值其实就是状态码，在ngx_http_request.h中定义，还包括nginx自己定义的一些值，比如NGX_HTTP_CLOSE
+//（表示nginx直接关闭用户的连接）还可能是全局的错误码，NGX_OK等
+//请求的所有的信息都可以在r中得到
 static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)  
 {  
     //必须是GET或者HEAD方法，否则返回405 Not Allowed  
@@ -83,6 +99,36 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
     {  
         return NGX_HTTP_NOT_ALLOWED;  
     }  
+	//遍历头部然后将test:test
+	ngx_list_part_t *part = &r->headers_in.headers.part;
+	ngx_table_elt_t *header = part->elts;
+	for (int i = 0;/*void*/; i++)
+	{
+		if (i >= part->nelts)
+		{
+			if (part->next == NULL)
+			{
+				break;
+			}
+			part = part->next;
+			header = part->elts;
+			i = 0;
+		}
+		//hash为0表示不合法的头部
+		if (header[i].hash == 0)
+		{
+			continue;
+		}
+		if (ngx_strncmp(header[i].key.data , (u_char*)"test", header[i].key.len) == 0)
+		{
+			//判断这个值是否是test
+			if (ngx_strncmp(header[i].value.data, (u_char*)"test", header[i].value.len) == 0)
+			{
+				return NGX_HTTP_INTERNAL_SERVER_ERROR;
+			}
+		}
+	}
+	
   
     //丢弃请求中的包体  
     ngx_int_t rc = ngx_http_discard_request_body(r);  
