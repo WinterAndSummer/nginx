@@ -102,7 +102,8 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
 	//遍历头部然后将test:test
 	ngx_list_part_t *part = &r->headers_in.headers.part;
 	ngx_table_elt_t *header = part->elts;
-	for (int i = 0;/*void*/; i++)
+	ngx_uint_t i = 0;
+	for (i = 0;/*void*/; i++)
 	{
 		if (i >= part->nelts)
 		{
@@ -148,7 +149,17 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
     r->headers_out.content_length_n = response.len;  
     //设置Content-Type  
     r->headers_out.content_type = type;  
-  
+
+	ngx_table_elt_t* h = ngx_list_push(&r->headers_out.headers);
+	if (h == NULL)
+	{
+		return NGX_ERROR;
+	}
+	h->hash = 1;
+	h->key.len = sizeof("testhead") - 1;
+	h->key.data = (u_char*)"testhead";
+	h->value.len = sizeof("testvalue") - 1;
+	h->value.data = (u_char*)"testvalue";
     //发送http头部  
     rc = ngx_http_send_header(r);  
     if (rc == NGX_ERROR || rc > NGX_OK || r->header_only)  
