@@ -166,31 +166,43 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
     {  
         return rc;  
     }  
-  
+	
     //构造ngx_buf_t结构准备发送包体  
-    ngx_buf_t                 *b;  
-    b = ngx_create_temp_buf(r->pool, response.len);  
-    if (b == NULL)  
-    {  
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;  
-    }  
-    //将Hello World拷贝到ngx_buf_t指向的内存中  
-    ngx_memcpy(b->pos, response.data, response.len);  
-    //注意，一定要设置好last指针  
-    b->last = b->pos + response.len;  
-    //声明这是最后一块缓冲区  
-    b->last_buf = 1;  
-  
+//    ngx_buf_t                 *b;  
+//    b = ngx_create_temp_buf(r->pool, response.len);  
+//    if (b == NULL)  
+//    {  
+//        return NGX_HTTP_INTERNAL_SERVER_ERROR;  
+//    }  
+//    //将Hello World拷贝到ngx_buf_t指向的内存中  
+//    ngx_memcpy(b->pos, response.data, response.len);  
+//    //注意，一定要设置好last指针  
+//    b->last = b->pos + response.len;  
+//    //声明这是最后一块缓冲区  
+//    b->last_buf = 1;  
+
+	ngx_str_t response1 = ngx_string("this is a test!"); 
+	ngx_buf_t *body;
+	body = ngx_create_temp_buf(r->pool, response1.len);
+	if (body == NULL)
+	{
+		return NGX_HTTP_INTERNAL_SERVER_ERROR;
+	}
+	ngx_memcpy(body->pos, response1.data, response1.len);
+	body->last = body->pos + response1.len;
+	body->last_buf = 0; 
     //构造发送时的ngx_chain_t结构体  
-    ngx_chain_t     out;  
-    //赋值ngx_buf_t  
-    out.buf = b;  
-    //设置next为NULL  
-    out.next = NULL;  
-  
+//    ngx_chain_t     out;  
+//    //赋值ngx_buf_t  
+//    out.buf = b;  
+//    //设置next为NULL  
+//    out.next = NULL;  
+  	ngx_chain_t     out1; 
+	out1.buf = body;
+	out1.next = NULL;
     //最后一步发送包体，http框架会调用ngx_http_finalize_request方法  
 //结束请求  
-    return ngx_http_output_filter(r, &out);  
+    return ngx_http_output_filter(r, &out1);  
 }  
 
 
