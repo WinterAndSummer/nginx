@@ -146,7 +146,7 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
     //设置返回状态码  
     r->headers_out.status = NGX_HTTP_OK;  
     //响应包是有包体内容的，所以需要设置Content-Length长度  
-    r->headers_out.content_length_n = response.len;  
+    //r->headers_out.content_length_n = response.len;  
     //设置Content-Type  
     r->headers_out.content_type = type;  
 
@@ -168,29 +168,70 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
     }  
 	
     //构造ngx_buf_t结构准备发送包体  
-    ngx_buf_t                 *b;  
-    b = ngx_create_temp_buf(r->pool, response.len);  
-    if (b == NULL)  
-    {  
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;  
-    }  
-    //将Hello World拷贝到ngx_buf_t指向的内存中  
-    ngx_memcpy(b->pos, response.data, response.len);  
-    //注意，一定要设置好last指针  
-    b->last = b->pos + response.len;  
-    //声明这是最后一块缓冲区  
-    b->last_buf = 1;  
- 
-    //构造发送时的ngx_chain_t结构体  
+//    ngx_buf_t                 *b;  
+//    b = ngx_create_temp_buf(r->pool, response.len);  
+//    if (b == NULL)  
+//    {  
+//        return NGX_HTTP_INTERNAL_SERVER_ERROR;  
+//    }  
+//    //将Hello World拷贝到ngx_buf_t指向的内存中  
+//    ngx_memcpy(b->pos, response.data, response.len);  
+//    //注意，一定要设置好last指针  
+//    b->last = b->pos + response.len;  
+//    //声明这是最后一块缓冲区  
+//    b->last_buf = 1;  
+// 
+//    //构造发送时的ngx_chain_t结构体  
+
+
+	//测试发送文件
+	ngx_buf_t *b = ngx_palloc(r->pool, sizeof(ngx_buf_t));
+	if (b == NULL)
+	{
+		return NGX_ERROR;
+	}
+	u_char* filename = (u_char*)"/tmp/test.txt";
+	b->in_file = 1;
+	b->file = ngx_palloc(r->pool, sizeof(ngx_file_t));
+	b->file->fd = ngx_open_file(filename, NGX_FILE_RDONLY|NGX_FILE_NONBLOCK,
+		NGX_FILE_OPEN, 0);
+	b->file->log = r->connection->log;
+	b->file->name.data = filename;
+	b->file->name.len = strlen(filename);
+	if (b->file->fd <= 0)
+	{
+		return NGX_HTTP_NOT_FOUND;
+	}
+	if (ngx_file_info(filename, &b->file->info) == NGX_FILE_ERROR)
+	{
+		return NGX_HTTP_INTERNAL_SERVER_ERROR;
+	}
+	r->headers_out.content_length_n = b->file->info.st_size;
+	b->file_pos = 0;
+	b->file_last = b->file->info.st_size;
+
+	//下面清理句柄
+	ngx_pool_cleanup_t* cln = ngx_pool_cleanup_add(r->pool, sizeof(ngx_pool_cleanup_file_t));
+	if (cln == NULL)
+	{
+		return NGX_ERROR;
+	}
+	cln->handler = ngx_pool_cleanup_file;
+	ngx_pool_cleanup_file_t* clnf = cln->data;
+	clnf->fd = b->file->fd;
+	clnf->name = b->file->name.data;
+	clnf->log = r->pool->log;
+
+	//构造发送时的ngx_chain_t结构体  
     ngx_chain_t     out;  
     //赋值ngx_buf_t  
     out.buf = b;  
     //设置next为NULL  
-    out.next = NULL;  
+    out.next = NULL; 
 
     //最后一步发送包体，http框架会调用ngx_http_finalize_request方法  
 //结束请求  
-    return ngx_http_output_filter(r, &out1);  
+    return ngx_http_output_filter(r, &out);  
 }  
 
 
