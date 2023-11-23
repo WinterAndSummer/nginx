@@ -142,7 +142,7 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
 //ngx_string，它可以把ngx_str_t的data和len成员都设置好  
     ngx_str_t type = ngx_string("text/plain");  
     //返回的包体内容  
-    ngx_str_t response = ngx_string("Hello World Hello World!");  
+    //ngx_str_t response = ngx_string("Hello World Hello World!");  
     //设置返回状态码  
     r->headers_out.status = NGX_HTTP_OK;  
     //响应包是有包体内容的，所以需要设置Content-Length长度  
@@ -160,12 +160,6 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
 	h->key.data = (u_char*)"testhead";
 	h->value.len = sizeof("testvalue") - 1;
 	h->value.data = (u_char*)"testvalue";
-    //发送http头部  
-    rc = ngx_http_send_header(r);  
-    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only)  
-    {  
-        return rc;  
-    }  
 	
     //构造ngx_buf_t结构准备发送包体  
 //    ngx_buf_t                 *b;  
@@ -197,7 +191,7 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
 		NGX_FILE_OPEN, 0);
 	b->file->log = r->connection->log;
 	b->file->name.data = filename;
-	b->file->name.len = strlen(filename);
+	b->file->name.len = strlen((char*)filename);
 	if (b->file->fd <= 0)
 	{
 		return NGX_HTTP_NOT_FOUND;
@@ -207,8 +201,17 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
 		return NGX_HTTP_INTERNAL_SERVER_ERROR;
 	}
 	r->headers_out.content_length_n = b->file->info.st_size;
+	//nginx支持断点续传
+	r->allow_ranges = 1;
+	//发送http头部  
+    rc = ngx_http_send_header(r);  
+    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only)  
+    {  
+        return rc;  
+    }  
 	b->file_pos = 0;
 	b->file_last = b->file->info.st_size;
+
 
 	//下面清理句柄
 	ngx_pool_cleanup_t* cln = ngx_pool_cleanup_add(r->pool, sizeof(ngx_pool_cleanup_file_t));
