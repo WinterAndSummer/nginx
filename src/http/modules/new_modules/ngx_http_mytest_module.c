@@ -59,7 +59,15 @@ static ngx_command_t  ngx_http_mytest_commands[] =
 		NGX_HTTP_LOC_CONF | NGX_CONF_FLAG,
 		ngx_conf_set_flag_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
-		offsetof(ngx_http_mytest_conf_t, myflag),
+		offsetof(ngx_http_mytest_conf_t, my_flag),
+		NULL,
+	},
+	{
+		ngx_string("test_str"),
+		NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+		ngx_conf_set_str_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, my_str),
 		NULL,
 	},
     ngx_null_command  
@@ -105,7 +113,7 @@ static void* ngx_http_mytest_create_loc_conf(ngx_conf_t *cf)
 	{
 		return NULL;
 	}
-	mycf->my_flag = NGX_CONF_UNSET;
+	mycf->my_flag = NGX_CONF_UNSET;//使用这个函数必须设置
 	mycf->my_num = NGX_CONF_UNSET;
 	mycf->my_str_array = NGX_CONF_UNSET_PTR;
 	mycf->my_keyval = NULL;
