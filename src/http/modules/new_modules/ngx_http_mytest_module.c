@@ -6,6 +6,7 @@
 static char *  
 ngx_http_mytest(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);  
 static void* ngx_http_mytest_create_loc_conf(ngx_conf_t *cf);
+static char* ngx_conf_set_new_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
   
 static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r);  
@@ -22,6 +23,11 @@ struct ngx_command_s {
 };
 */
 
+typedef struct {
+	ngx_str_t my_config_str;
+	ngx_int_t my_config_num;
+} ngx_http_new_conf_t;
+
 typedef struct{
 	ngx_str_t my_str;
 	ngx_int_t my_num;
@@ -33,10 +39,11 @@ typedef struct{
 	ngx_msec_t my_msec;
 	time_t my_sec;
 	ngx_bufs_t my_bufs;
-	ngx_uint_t my_enum_seg;
+	ngx_uint_t my_enum_seq;
 	ngx_uint_t mybitmask;
 	ngx_uint_t my_access;
 	ngx_path_t* my_path;
+	ngx_http_new_conf_t my_new_conf;
 }ngx_http_mytest_conf_t;
 
 static ngx_conf_enum_t test_enums[] = {
@@ -148,7 +155,14 @@ static ngx_command_t  ngx_http_mytest_commands[] =
 		offsetof(ngx_http_mytest_conf_t, my_access), 
 		NULL,
 	},
-
+	{
+		ngx_string("test_new_conf"), //配置方式，test_access user:rw group:rw all:r
+		NGX_HTTP_LOC_CONF | NGX_CONF_TAKE12,
+		ngx_conf_set_access_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, my_new_conf), 
+		NULL,
+	},
     ngx_null_command  
 };  
 //模块上下文  
@@ -183,6 +197,24 @@ ngx_module_t  ngx_http_mytest_module =
     NGX_MODULE_V1_PADDING  
 };  
 
+static char* ngx_conf_set_new_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+	ngx_http_mytest_conf_t* mycf = conf;
+	ngx_str_t* value = cf->args->elts;
+	if (cf->args->nelts > 1)
+	{
+		mycf->my_new_conf.my_config_str = value[1];
+	}
+	if (cf->args->nelts > 2)
+	{
+		mycf->my_new_conf.my_config_num = ngx_atoi(value[2].data, value[2].len);
+		if (mycf->my_new_conf.my_config_num == NGX_ERROR)
+		{
+			return "invalid number";
+		}
+	}
+	return NGX_CONF_OK;
+}
 
 static void* ngx_http_mytest_create_loc_conf(ngx_conf_t *cf)
 {
