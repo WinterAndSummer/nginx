@@ -158,7 +158,7 @@ static ngx_command_t  ngx_http_mytest_commands[] =
 	{
 		ngx_string("test_new_conf"), //配置方式，test_access user:rw group:rw all:r
 		NGX_HTTP_LOC_CONF | NGX_CONF_TAKE12,
-		ngx_conf_set_access_slot,
+		ngx_conf_set_new_conf,
 		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
 		offsetof(ngx_http_mytest_conf_t, my_new_conf), 
 		NULL,
@@ -178,7 +178,7 @@ static ngx_http_module_t  ngx_http_mytest_module_ctx =
     NULL,                              /* merge server configuration */  
   
     ngx_http_mytest_create_loc_conf,   /* create location configuration */  
-    NULL                    /* merge location configuration */  
+    mgx_http_mytset_merge_loc_conf     /* merge location configuration */  
 };  
 //新模块定义    
 ngx_module_t  ngx_http_mytest_module =  
@@ -233,6 +233,14 @@ static void* ngx_http_mytest_create_loc_conf(ngx_conf_t *cf)
 	mycf->my_sec = NGX_CONF_UNSET;
 	mycf->my_size = NGX_CONF_UNSET_SIZE;
 	return mycf;
+}
+
+static char* mgx_http_mytset_merge_loc_conf(ngx_conf_t* cf, void * parent, void* child)
+{
+	ngx_http_mytest_conf_t* prev = (ngx_http_mytest_conf_t*)parent;
+	ngx_http_mytest_conf_t* conf = (ngx_http_mytest_conf_t*)child;
+	ngx_conf_merge_value(conf->my_str, prev->my_str, "defaultstr");
+	return NGX_CONF_OK;
 }
 
 //配置项对应的回调函数   
