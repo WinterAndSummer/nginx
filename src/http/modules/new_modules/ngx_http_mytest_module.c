@@ -5,6 +5,8 @@
   
 static char *  
 ngx_http_mytest(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);  
+static void* ngx_http_mytest_create_loc_conf(ngx_conf_t *cf);
+
   
 static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r);  
 /*
@@ -19,7 +21,25 @@ struct ngx_command_s {
     void                 *post;//配置项读取后的处理方法，必须是ngx_conf_post_t结构指针
 };
 */
-  
+
+typedef struct{
+	ngx_str_t my_str;
+	ngx_int_t my_num;
+	ngx_flag_t my_flag;
+	size_t my_size;
+	ngx_array_t* my_str_array;
+	ngx_array_t* my_keyval;
+	off_t my_off;
+	ngx_msec_t my_msec;
+	time_t my_sec;
+	ngx_bufs_t my_bufs;
+	ngx_uint_t my_enum_seg;
+	ngx_uint_t mybitmask;
+	ngx_uint_t my_access;
+	ngx_path_t* my_path;
+}ngx_http_mytest_conf_t;
+
+
 //处理配置项 
 //遍历模块的ngx_command_t数组，直到ngx_null_command
 static ngx_command_t  ngx_http_mytest_commands[] =  
@@ -34,7 +54,14 @@ static ngx_command_t  ngx_http_mytest_commands[] =
         0,  
         NULL  
     },  
-  
+    {
+		ngx_string("test_flag"),
+		NGX_HTTP_LOC_CONF | NGX_CONF_FLAG,
+		ngx_conf_set_flag_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, myflag),
+		NULL,
+	},
     ngx_null_command  
 };  
 //模块上下文  
@@ -49,7 +76,7 @@ static ngx_http_module_t  ngx_http_mytest_module_ctx =
     NULL,                              /* create server configuration */  
     NULL,                              /* merge server configuration */  
   
-    NULL,                   /* create location configuration */  
+    ngx_http_mytest_create_loc_conf,   /* create location configuration */  
     NULL                    /* merge location configuration */  
 };  
 //新模块定义    
@@ -68,7 +95,27 @@ ngx_module_t  ngx_http_mytest_module =
     NULL,                                  /* exit master */  
     NGX_MODULE_V1_PADDING  
 };  
-  
+
+
+static void* ngx_http_mytest_create_loc_conf(ngx_conf_t *cf)
+{
+	ngx_http_mytest_conf_t *mycf;
+	mycf = (ngx_http_mytest_conf_t*)ngx_palloc(cf->pool, sizeof(ngx_http_mytest_conf_t));
+	if (mycf == NULL)
+	{
+		return NULL;
+	}
+	mycf->my_flag = NGX_CONF_UNSET;
+	mycf->my_num = NGX_CONF_UNSET;
+	mycf->my_str_array = NGX_CONF_UNSET_PTR;
+	mycf->my_keyval = NULL;
+	mycf->my_off = NGX_CONF_UNSET;
+	mycf->my_msec = NGX_CONF_UNSET_MSEC;
+	mycf->my_sec = NGX_CONF_UNSET;
+	mycf->my_size = NGX_CONF_UNSET_SIZE;
+	return mycf;
+}
+
 //配置项对应的回调函数   
 static char *  
 ngx_http_mytest(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)  
