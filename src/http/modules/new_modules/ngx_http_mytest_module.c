@@ -39,6 +39,12 @@ typedef struct{
 	ngx_path_t* my_path;
 }ngx_http_mytest_conf_t;
 
+static ngx_conf_enum_t test_enums[] = {
+	{ngx_string("apple"), 1},
+	{ngx_string("banana"), 2},
+	{ngx_string("orange"), 3},
+	{ngx_null_string, 0}
+};
 
 //处理配置项 
 //遍历模块的ngx_command_t数组，直到ngx_null_command
@@ -124,6 +130,22 @@ static ngx_command_t  ngx_http_mytest_commands[] =
 		ngx_conf_set_bufs_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
 		offsetof(ngx_http_mytest_conf_t, my_bufs), 
+		NULL,
+	},
+	{
+		ngx_string("test_enum"), //配置方式，test_bufs 4 1K;就是4个1K的缓冲区
+		NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+		ngx_conf_set_enum_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, my_enum_seq), 
+		test_enums,
+	},
+	{
+		ngx_string("test_access"), //配置方式，test_access user:rw group:rw all:r
+		NGX_HTTP_LOC_CONF | NGX_CONF_TAKE123,
+		ngx_conf_set_access_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, my_access), 
 		NULL,
 	},
 
