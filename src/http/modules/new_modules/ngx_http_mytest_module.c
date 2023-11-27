@@ -1,3 +1,4 @@
+
 #include <ngx_config.h>  
 #include <ngx_core.h>  
 #include <ngx_http.h>  
@@ -7,6 +8,7 @@ static char *
 ngx_http_mytest(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);  
 static void* ngx_http_mytest_create_loc_conf(ngx_conf_t *cf);
 static char* ngx_conf_set_new_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char* mgx_http_mytset_merge_loc_conf(ngx_conf_t* cf, void * parent, void* child);
 
   
 static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r);  
@@ -213,6 +215,8 @@ static char* ngx_conf_set_new_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *con
 			return "invalid number";
 		}
 	}
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, "my_config_str = %V, my_config_num = %d", 
+		mycf->my_new_conf.my_config_str, mycf->my_new_conf.my_config_num);
 	return NGX_CONF_OK;
 }
 
@@ -239,7 +243,7 @@ static char* mgx_http_mytset_merge_loc_conf(ngx_conf_t* cf, void * parent, void*
 {
 	ngx_http_mytest_conf_t* prev = (ngx_http_mytest_conf_t*)parent;
 	ngx_http_mytest_conf_t* conf = (ngx_http_mytest_conf_t*)child;
-	ngx_conf_merge_value(conf->my_str, prev->my_str, "defaultstr");
+	ngx_conf_merge_str_value(conf->my_str, prev->my_str, "defaultstr");
 	return NGX_CONF_OK;
 }
 
