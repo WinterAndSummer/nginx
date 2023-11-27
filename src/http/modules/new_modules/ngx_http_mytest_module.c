@@ -70,6 +70,63 @@ static ngx_command_t  ngx_http_mytest_commands[] =
 		offsetof(ngx_http_mytest_conf_t, my_str),
 		NULL,
 	},
+	{
+		ngx_string("test_str_array"), //配置方式，test_str_array Content-Lenght;test_str_array Content-Encoding;
+		NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+		ngx_conf_set_str_array_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, my_str_array), 
+		NULL,
+	},
+	{
+		ngx_string("test_keyval"), //配置方式，test_keyval Content-Type image/png;test_keyval Content-Type image/gif;
+		NGX_HTTP_LOC_CONF | NGX_CONF_TAKE2,
+		ngx_conf_set_keyval_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, my_keyval), 
+		NULL,
+	},
+	{
+		ngx_string("test_num"), //配置方式，test_num 10;
+		NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+		ngx_conf_set_num_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, my_num), 
+		NULL,
+	},
+	{
+		ngx_string("test_size"), //配置方式，test_size 10k;那么my_size就是10240字节
+		NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+		ngx_conf_set_size_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, my_size), 
+		NULL,
+	},
+	{
+		ngx_string("test_off"), //配置方式，test_off 10k;那么my_size就是10240字节,支持g
+		NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+		ngx_conf_set_off_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, my_off), 
+		NULL,
+	},
+	{
+		ngx_string("test_msec"), //配置方式，test_msec 1d;那么my_msec就是86400000毫秒
+		NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+		ngx_conf_set_msec_slot,//ngx_conf_set_sec_slot代表的是s
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, my_msec), 
+		NULL,
+	},
+	{
+		ngx_string("test_bufs"), //配置方式，test_bufs 4 1K;就是4个1K的缓冲区
+		NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+		ngx_conf_set_bufs_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,//用来设置是哪个结构体来存储解析的配置参数。
+		offsetof(ngx_http_mytest_conf_t, my_bufs), 
+		NULL,
+	},
+
     ngx_null_command  
 };  
 //模块上下文  
