@@ -9,6 +9,10 @@ ngx_http_mytest(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static void* ngx_http_mytest_create_loc_conf(ngx_conf_t *cf);
 static char* ngx_conf_set_new_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char* mgx_http_mytset_merge_loc_conf(ngx_conf_t* cf, void * parent, void* child);
+static void mytest_upstream_finalize_request(ngx_http_request_t*, ngx_int_t);
+static ngx_int_t mytest_upstream_process_header(ngx_http_request_t*);
+static ngx_int_t mytest_process_status_line(ngx_http_request_t*);
+static ngx_int_t mytest_upstream_create_request(ngx_http_request_t*);
 
   
 static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r);  
@@ -46,6 +50,7 @@ typedef struct{
 	ngx_uint_t my_access;
 	ngx_path_t* my_path;
 	ngx_http_new_conf_t my_new_conf;
+	ngx_http_upstream_conf_t upstream;
 }ngx_http_mytest_conf_t;
 
 static ngx_conf_enum_t test_enums[] = {
@@ -167,6 +172,16 @@ static ngx_command_t  ngx_http_mytest_commands[] =
 	},
     ngx_null_command  
 };  
+
+typedef struct {
+	ngx_uint_t my_step;
+	ngx_http_status_t status;
+	struct {
+        u_char* data;
+        ngx_uint_t len;
+    } backendServer;
+} ngx_http_mytest_ctx_t;
+
 //模块上下文  
 static ngx_http_module_t  ngx_http_mytest_module_ctx =  
 {  
@@ -215,8 +230,9 @@ static char* ngx_conf_set_new_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *con
 			return "invalid number";
 		}
 	}
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, "my_config_str = %V, my_config_num = %d", 
-		mycf->my_new_conf.my_config_str, mycf->my_new_conf.my_config_num);
+	//可以设置ngx_errno
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "my_config_str = %V, my_config_num = %d", 
+		&mycf->my_new_conf.my_config_str, mycf->my_new_conf.my_config_num);
 	return NGX_CONF_OK;
 }
 
@@ -236,6 +252,21 @@ static void* ngx_http_mytest_create_loc_conf(ngx_conf_t *cf)
 	mycf->my_msec = NGX_CONF_UNSET_MSEC;
 	mycf->my_sec = NGX_CONF_UNSET;
 	mycf->my_size = NGX_CONF_UNSET_SIZE;
+
+	//设置upstream相关的字段
+	mycf->upstream.connect_timeout = 6000;
+	mycf->upstream.send_timeout = 6000;
+	mycf->upstream.read_timeout = 6000;
+	mycf->upstream.store_access = 0600;
+	mycf->upstream.buffering = 0;
+	mycf->upstream.bufs.num = 8;
+	mycf->upstream.bufs.size = ngx_pagesize;
+	mycf->upstream.buffer_size = ngx_pagesize;
+	mycf->upstream.busy_buffers_size = 2 * ngx_pagesize;
+	mycf->upstream.temp_file_write_size = 2 * ngx_pagesize;
+	mycf->upstream.max_temp_file_size = 1024 * 1024 * 1024;
+	mycf->upstream.hide_headers = NGX_CONF_UNSET_PTR;
+	mycf->upstream.pass_headers = NGX_CONF_UNSET_PTR;
 	return mycf;
 }
 
@@ -245,6 +276,155 @@ static char* mgx_http_mytset_merge_loc_conf(ngx_conf_t* cf, void * parent, void*
 	ngx_http_mytest_conf_t* conf = (ngx_http_mytest_conf_t*)child;
 	ngx_conf_merge_str_value(conf->my_str, prev->my_str, "defaultstr");
 	return NGX_CONF_OK;
+}
+
+static ngx_int_t 
+mytest_upstream_create_request(ngx_http_request_t* r)
+{
+	static ngx_str_t backendQueryLine = ngx_string("GET /search/?q=%V HTTP/1.1\r\nUser-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36\r\nHost: www.google.com\r\nConnection: close\r\n\r\n");
+	ngx_int_t queryLineLen = backendQueryLine.len + r->args.len - 2;
+	ngx_buf_t *b = ngx_create_temp_buf(r->pool, queryLineLen);
+	if (b == NULL)
+		return NGX_ERROR;
+	b->last = b->pos + queryLineLen;
+	ngx_snprintf(b->pos, queryLineLen, (char*)backendQueryLine.data, &r->args);
+	r->upstream->request_bufs = ngx_alloc_chain_link(r->pool);
+	if (r->upstream->request_bufs == NULL)
+		return NGX_ERROR;
+	r->upstream->request_bufs->buf = b;
+	r->upstream->request_bufs->next = NULL;
+	r->upstream->request_sent = 0;
+	r->upstream->header_sent = 0;
+	r->header_hash = 1;
+	return NGX_OK;
+}
+
+static void
+mytest_upstream_finalize_request(ngx_http_request_t *r, ngx_int_t rc) {
+    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "mytest_upstream_finalize_request");
+}
+
+
+static ngx_int_t
+mytest_process_status_line(ngx_http_request_t *r)
+{
+	size_t len;
+	ngx_int_t rc;
+	ngx_http_upstream_t *u;
+	ngx_http_mytest_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_mytest_module);
+	if (ctx == NULL) {
+		return NGX_ERROR;
+	}
+	u = r->upstream;
+	rc = ngx_http_parse_status_line(r, &u->buffer, &ctx->status);
+	if (rc == NGX_AGAIN) {
+		return rc;
+	}
+	if (rc == NGX_ERROR) {
+		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "upstream sent no valid HTTP/1.0 header");
+		r->http_version = NGX_HTTP_VERSION_9;
+		u->state->status = NGX_HTTP_OK;
+		return NGX_OK;
+	}
+	if (u->state) {
+		u->state->status = ctx->status.code;
+	}
+	u->headers_in.status_n = ctx->status.code;
+	len = ctx->status.end - ctx->status.start;
+	u->headers_in.status_line.len = len;
+	u->headers_in.status_line.data = ngx_pnalloc(r->pool, len);
+	if (u->headers_in.status_line.data == NULL) {
+		return NGX_ERROR;
+	}
+	ngx_memcpy(u->headers_in.status_line.data, ctx->status.start, len);
+	u->process_header = mytest_upstream_process_header;
+	return mytest_upstream_process_header(r);	
+}
+
+static ngx_int_t
+mytest_upstream_process_header(ngx_http_request_t *r)
+{
+    ngx_int_t                       rc;
+    ngx_table_elt_t                *h;
+    ngx_http_upstream_header_t     *hh;
+    ngx_http_upstream_main_conf_t  *umcf;
+    /*这里将upstream模块配置项ngx_http_upstream_main_conf_t取出来, 目的只有一个, 就是对将要转发给下游客户端的HTTP响应头部进行统一处理。该结构体中存储了需要进行统一处理的HTTP头部名称和回调方法*/
+    umcf = ngx_http_get_module_main_conf(r, ngx_http_upstream_module);
+    // 循环地解析所有的HTTP头部
+    for ( ;; ) {
+        /* HTTP框架提供了基础性的ngx_http_parse_header_line方法, 它用于解析HTTP头部*/
+        rc = ngx_http_parse_header_line(r, &r->upstream->buffer, 1);
+        // 返回NGX_OK时, 表示解析出一行HTTP头部
+        if (rc == NGX_OK) {
+            // 向headers_in.headers这个ngx_list_t链表中添加HTTP头部
+            h = ngx_list_push(&r->upstream->headers_in.headers);
+            if (h == NULL) {
+                return NGX_ERROR;
+            }
+            // 下面开始构造刚刚添加到headers链表中的HTTP头部
+            h->hash = r->header_hash;
+            h->key.len = r->header_name_end - r->header_name_start;
+            h->value.len = r->header_end - r->header_start;
+            // 必须在内存池中分配存放HTTP头部的内存空间
+            h->key.data = ngx_pnalloc(r->pool,
+            h->key.len + 1 + h->value.len + 1 + h->key.len);
+            if (h->key.data == NULL) {
+                return NGX_ERROR;
+            }
+            h->value.data = h->key.data + h->key.len + 1;
+            h->lowcase_key = h->key.data + h->key.len + 1 + h->value.len + 1;
+            ngx_memcpy(h->key.data, r->header_name_start, h->key.len);
+            h->key.data[h->key.len] = '\0';
+            ngx_memcpy(h->value.data, r->header_start, h->value.len);
+            h->value.data[h->value.len] = '\0';
+            if (h->key.len == r->lowcase_index) {
+                ngx_memcpy(h->lowcase_key, r->lowcase_header, h->key.len);
+            } else {
+                ngx_strlow(h->lowcase_key, h->key.data, h->key.len);
+            }
+            // upstream模块会对一些HTTP头部做特殊处理
+            hh = ngx_hash_find(&umcf->headers_in_hash, h->hash,
+                               h->lowcase_key, h->key.len);
+            if (hh && hh->handler(r, h, hh->offset) != NGX_OK) {
+                return NGX_ERROR;
+            }
+            continue;
+        }
+    /*返回NGX_HTTP_PARSE_HEADER_DONE时, 表示响应中所有的HTTP头部都解析完毕, 接下来再接收到的都将是HTTP包体*/
+        if (rc == NGX_HTTP_PARSE_HEADER_DONE) {
+            /*如果之前解析HTTP头部时没有发现server和date头部, 那么下面会根据HTTP协议规范添加这两个头部*/
+            if (r->upstream->headers_in.server == NULL) {
+                h = ngx_list_push(&r->upstream->headers_in.headers);
+                if (h == NULL) {
+                    return NGX_ERROR;
+                }
+                h->hash = ngx_hash(ngx_hash(ngx_hash(ngx_hash(
+                                    ngx_hash('s', 'e'), 'r'), 'v'), 'e'), 'r');
+                ngx_str_set(&h->key, "Server");
+                ngx_str_null(&h->value);
+                h->lowcase_key = (u_char *) "server";
+            }
+            if (r->upstream->headers_in.date == NULL) {
+                h = ngx_list_push(&r->upstream->headers_in.headers);
+                if (h == NULL) {
+                    return NGX_ERROR;
+                }
+                h->hash = ngx_hash(ngx_hash(ngx_hash('d', 'a'), 't'), 'e');
+                ngx_str_set(&h->key, "Date");
+                ngx_str_null(&h->value);
+                h->lowcase_key = (u_char *) "date";
+            }
+            return NGX_OK;
+        }
+        /*如果返回NGX_AGAIN, 则表示状态机还没有解析到完整的HTTP头部, 此时要求upstream模块继续接收新的字符流, 然后交由process_header回调方法解析*/
+        if (rc == NGX_AGAIN) {
+            return NGX_AGAIN;
+        }
+        // 其他返回值都是非法的
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "upstream sent invalid header");
+        return NGX_HTTP_UPSTREAM_INVALID_HEADER;
+    }
 }
 
 //配置项对应的回调函数   
@@ -272,147 +452,64 @@ ngx_http_mytest(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 //请求的所有的信息都可以在r中得到
 static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)  
 {  
-    //必须是GET或者HEAD方法，否则返回405 Not Allowed  
-    if (!(r->method & (NGX_HTTP_GET | NGX_HTTP_HEAD)))  
-    {  
-        return NGX_HTTP_NOT_ALLOWED;  
-    }  
-	//遍历头部然后将test:test
-	ngx_list_part_t *part = &r->headers_in.headers.part;
-	ngx_table_elt_t *header = part->elts;
-	ngx_uint_t i = 0;
-	for (i = 0;/*void*/; i++)
-	{
-		if (i >= part->nelts)
-		{
-			if (part->next == NULL)
-			{
-				break;
-			}
-			part = part->next;
-			header = part->elts;
-			i = 0;
+	// 首先建立HTTP上下文结构体ngx_http_mytest_ctx_t
+	ngx_http_mytest_ctx_t* myctx = ngx_http_get_module_ctx(r,ngx_http_mytest_module);
+	if (myctx == NULL) {
+		myctx = ngx_palloc(r->pool, sizeof(ngx_http_mytest_ctx_t));
+		if (myctx == NULL) {
+			return NGX_ERROR;
 		}
-		//hash为0表示不合法的头部
-		if (header[i].hash == 0)
-		{
-			continue;
-		}
-		if (ngx_strncmp(header[i].key.data , (u_char*)"test", header[i].key.len) == 0)
-		{
-			//判断这个值是否是test
-			if (ngx_strncmp(header[i].value.data, (u_char*)"test", header[i].value.len) == 0)
-			{
-				return NGX_HTTP_INTERNAL_SERVER_ERROR;
-			}
-		}
+		// 将新建的上下文与请求关联起来
+		ngx_http_set_ctx(r,myctx,ngx_http_mytest_module);
 	}
-	
-  
-    //丢弃请求中的包体  
-    ngx_int_t rc = ngx_http_discard_request_body(r);  
-    if (rc != NGX_OK)  
-    {  
-        return rc;  
-    }  
-  
-    //设置返回的Content-Type。注意，ngx_str_t有一个很方便的初始化宏  
-//ngx_string，它可以把ngx_str_t的data和len成员都设置好  
-    ngx_str_t type = ngx_string("text/plain");  
-    //返回的包体内容  
-    //ngx_str_t response = ngx_string("Hello World Hello World!");  
-    //设置返回状态码  
-    r->headers_out.status = NGX_HTTP_OK;  
-    //响应包是有包体内容的，所以需要设置Content-Length长度  
-    //r->headers_out.content_length_n = response.len;  
-    //设置Content-Type  
-    r->headers_out.content_type = type;  
-
-	ngx_table_elt_t* h = ngx_list_push(&r->headers_out.headers);
-	if (h == NULL)
-	{
+	/*对每1个要使用upstream的请求, 必须调用且只能调用1次ngx_http_upstream_create方法, 它会初始化r->upstream成员*/
+	if (ngx_http_upstream_create(r) != NGX_OK) {
+		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,"ngx_http_upstream_create() failed");
 		return NGX_ERROR;
 	}
-	h->hash = 1;
-	h->key.len = sizeof("testhead") - 1;
-	h->key.data = (u_char*)"testhead";
-	h->value.len = sizeof("testvalue") - 1;
-	h->value.data = (u_char*)"testvalue";
-	
-    //构造ngx_buf_t结构准备发送包体  
-//    ngx_buf_t                 *b;  
-//    b = ngx_create_temp_buf(r->pool, response.len);  
-//    if (b == NULL)  
-//    {  
-//        return NGX_HTTP_INTERNAL_SERVER_ERROR;  
-//    }  
-//    //将Hello World拷贝到ngx_buf_t指向的内存中  
-//    ngx_memcpy(b->pos, response.data, response.len);  
-//    //注意，一定要设置好last指针  
-//    b->last = b->pos + response.len;  
-//    //声明这是最后一块缓冲区  
-//    b->last_buf = 1;  
-// 
-//    //构造发送时的ngx_chain_t结构体  
-
-
-	//测试发送文件
-	ngx_buf_t *b = ngx_palloc(r->pool, sizeof(ngx_buf_t));
-	if (b == NULL)
-	{
+	// 得到配置结构体ngx_http_mytest_conf_t
+	ngx_http_mytest_conf_t	*mycf = (ngx_http_mytest_conf_t  *) ngx_http_get_module_loc_conf(r, ngx_http_mytest_module);
+	ngx_http_upstream_t *u = r->upstream;
+	// 这里用配置文件中的结构体来赋给r->upstream->conf成员
+	u->conf = &mycf->upstream;
+	// 决定转发包体时使用的缓冲区
+	u->buffering = mycf->upstream.buffering;
+	// 以下代码开始初始化resolved结构体, 用来保存上游服务器的地址
+	u->resolved = (ngx_http_upstream_resolved_t*) ngx_pcalloc(r->pool, sizeof(ngx_http_upstream_resolved_t));
+	if (u->resolved == NULL) {
+		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, 
+		"ngx_pcalloc resolved error. %s.", strerror(errno));
 		return NGX_ERROR;
 	}
-	u_char* filename = (u_char*)"/tmp/test.txt";
-	b->in_file = 1;
-	b->file = ngx_palloc(r->pool, sizeof(ngx_file_t));
-	b->file->fd = ngx_open_file(filename, NGX_FILE_RDONLY|NGX_FILE_NONBLOCK,
-		NGX_FILE_OPEN, 0);
-	b->file->log = r->connection->log;
-	b->file->name.data = filename;
-	b->file->name.len = strlen((char*)filename);
-	if (b->file->fd <= 0)
-	{
-		return NGX_HTTP_NOT_FOUND;
-	}
-	if (ngx_file_info(filename, &b->file->info) == NGX_FILE_ERROR)
-	{
-		return NGX_HTTP_INTERNAL_SERVER_ERROR;
-	}
-	r->headers_out.content_length_n = b->file->info.st_size;
-	//nginx支持断点续传
-	r->allow_ranges = 1;
-	//发送http头部  
-    rc = ngx_http_send_header(r);  
-    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only)  
-    {  
-        return rc;  
-    }  
-	b->file_pos = 0;
-	b->file_last = b->file->info.st_size;
-
-
-	//下面清理句柄
-	ngx_pool_cleanup_t* cln = ngx_pool_cleanup_add(r->pool, sizeof(ngx_pool_cleanup_file_t));
-	if (cln == NULL)
-	{
+	// 这里的上游服务器就是www.google.com
+	static struct sockaddr_in backendSockAddr;
+	struct hostent *pHost = gethostbyname((char*) "www.google.com");
+	if (pHost == NULL) {
+		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
 		return NGX_ERROR;
 	}
-	cln->handler = ngx_pool_cleanup_file;
-	ngx_pool_cleanup_file_t* clnf = cln->data;
-	clnf->fd = b->file->fd;
-	clnf->name = b->file->name.data;
-	clnf->log = r->pool->log;
-
-	//构造发送时的ngx_chain_t结构体  
-    ngx_chain_t     out;  
-    //赋值ngx_buf_t  
-    out.buf = b;  
-    //设置next为NULL  
-    out.next = NULL; 
-
-    //最后一步发送包体，http框架会调用ngx_http_finalize_request方法  
-//结束请求  
-    return ngx_http_output_filter(r, &out);  
+	// 访问上游服务器的80端口
+	backendSockAddr.sin_family = AF_INET;
+	backendSockAddr.sin_port = htons((in_port_t) 80);
+	char* pDmsIP = inet_ntoa(*(struct in_addr*) (pHost->h_addr_list[0]));
+	backendSockAddr.sin_addr.s_addr = inet_addr(pDmsIP);
+	myctx->backendServer.data = (u_char*)pDmsIP;
+	myctx->backendServer.len = strlen(pDmsIP);
+	// 将地址设置到resolved成员中
+	u->resolved->sockaddr = (struct sockaddr *)&backendSockAddr;
+	u->resolved->socklen = sizeof(struct sockaddr_in);
+	u->resolved->naddrs = 1;
+	u->resolved->port = 80;
+	// 设置3个必须实现的回调方法, 也就是5.3.3节~5.3.5节中实现的3个方法
+	u->create_request = mytest_upstream_create_request;
+	u->process_header = mytest_process_status_line;
+	u->finalize_request = mytest_upstream_finalize_request;
+	// 这里必须将count成员加1, 参见5.1.5节
+	r->main->count++;
+	// 启动upstream
+	ngx_http_upstream_init(r);
+	// 必须返回NGX_DONE
+	return NGX_DONE;
 }  
 
 
