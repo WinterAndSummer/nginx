@@ -490,7 +490,7 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
 	}
 	// 访问上游服务器的80端口
 	backendSockAddr.sin_family = AF_INET;
-	backendSockAddr.sin_port = htons((in_port_t) 80);
+	backendSockAddr.sin_port = htons((in_port_t) 8080);
 	//char* pDmsIP = inet_ntoa(*(struct in_addr*) (pHost->h_addr_list[0]));
 	char* pDmsIP = "127.0.0.1";
 	backendSockAddr.sin_addr.s_addr = inet_addr(pDmsIP);

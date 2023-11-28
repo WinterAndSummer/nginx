@@ -302,10 +302,10 @@ typedef struct {
     ngx_str_t                        host;
     in_port_t                        port;
     ngx_uint_t                       no_port; /* unsigned no_port:1 */
-
+	//地址的个数
     ngx_uint_t                       naddrs;
     ngx_resolver_addr_t             *addrs;
-
+	//上游服务器的地址
     struct sockaddr                 *sockaddr;
     socklen_t                        socklen;
     ngx_str_t                        name;
@@ -325,12 +325,12 @@ struct ngx_http_upstream_s {
     ngx_peer_connection_t            peer;
 
     ngx_event_pipe_t                *pipe;
-
+	//决定发送什么样的请求给上游服务器，在实现create_request方法时需要设置
     ngx_chain_t                     *request_bufs;
 
     ngx_output_chain_ctx_t           output;
     ngx_chain_writer_ctx_t           writer;
-
+	//upstream访问时所有的限制性参数
     ngx_http_upstream_conf_t        *conf;
     ngx_http_upstream_srv_conf_t    *upstream;
 #if (NGX_HTTP_CACHE)
@@ -338,11 +338,13 @@ struct ngx_http_upstream_s {
 #endif
 
     ngx_http_upstream_headers_in_t   headers_in;
-
+	//通过resolved可以直接指定上游的服务器地址
     ngx_http_upstream_resolved_t    *resolved;
-
+	
     ngx_buf_t                        from_client;
-
+	//buffer成员存储接收自上游服务器发来的响应内容，可以被复用，所以有多种含义：a）在使用process_headler方法解析上游包时，buffer
+	//中会保存完整的响应包头，b）当下面的buffering为1时，而upstream时转发包时，buffer没意义。c)当buffering的标志位为0时，buffer会被反复的接收上游包体
+	//进而向下游转发。
     ngx_buf_t                        buffer;
     off_t                            length;
 
@@ -357,10 +359,14 @@ struct ngx_http_upstream_s {
 #if (NGX_HTTP_CACHE)
     ngx_int_t                      (*create_key)(ngx_http_request_t *r);
 #endif
+	//构造发往上游服务器的请求内容
     ngx_int_t                      (*create_request)(ngx_http_request_t *r);
     ngx_int_t                      (*reinit_request)(ngx_http_request_t *r);
+	//收到上游服务器的响应后就会回调这个，如果返回了NGX_AGAIN,那么时在告诉upstream还没有收到完整的响应包头。再次接收到上游服务器发来的tcp流时，还会调用
+	//这个方法，直到返回的值不是NGX_AGAIN
     ngx_int_t                      (*process_header)(ngx_http_request_t *r);
     void                           (*abort_request)(ngx_http_request_t *r);
+	//销毁upstream时调用
     void                           (*finalize_request)(ngx_http_request_t *r,
                                          ngx_int_t rc);
     ngx_int_t                      (*rewrite_redirect)(ngx_http_request_t *r,
@@ -385,11 +391,13 @@ struct ngx_http_upstream_s {
     unsigned                         store:1;
     unsigned                         cacheable:1;
     unsigned                         accel:1;
+	//是否使用ssl
     unsigned                         ssl:1;
 #if (NGX_HTTP_CACHE)
     unsigned                         cache_status:3;
 #endif
-
+	//当这个值是1时，表示使用多个缓冲区和磁盘文件来转发上游的响应包体，当nginx上游的网速远远大于下游的网速时，可以选择这个，当这个值是0时就选择上面的
+	//buffer来处理
     unsigned                         buffering:1;
     unsigned                         keepalive:1;
     unsigned                         upgrade:1;
