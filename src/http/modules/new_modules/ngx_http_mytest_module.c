@@ -281,7 +281,7 @@ static char* mgx_http_mytset_merge_loc_conf(ngx_conf_t* cf, void * parent, void*
 static ngx_int_t 
 mytest_upstream_create_request(ngx_http_request_t* r)
 {
-	static ngx_str_t backendQueryLine = ngx_string("GET /search/?q=%V HTTP/1.1\r\nUser-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36\r\nHost: www.google.com\r\nConnection: close\r\n\r\n");
+	static ngx_str_t backendQueryLine = ngx_string("GET /%V HTTP/1.1\r\nHost: www.google.com\r\nConnection: close\r\n\r\n");
 	ngx_int_t queryLineLen = backendQueryLine.len + r->args.len - 2;
 	ngx_buf_t *b = ngx_create_temp_buf(r->pool, queryLineLen);
 	if (b == NULL)
@@ -491,7 +491,8 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r)
 	// 访问上游服务器的80端口
 	backendSockAddr.sin_family = AF_INET;
 	backendSockAddr.sin_port = htons((in_port_t) 80);
-	char* pDmsIP = inet_ntoa(*(struct in_addr*) (pHost->h_addr_list[0]));
+	//char* pDmsIP = inet_ntoa(*(struct in_addr*) (pHost->h_addr_list[0]));
+	char* pDmsIP = "127.0.0.1";
 	backendSockAddr.sin_addr.s_addr = inet_addr(pDmsIP);
 	myctx->backendServer.data = (u_char*)pDmsIP;
 	myctx->backendServer.len = strlen(pDmsIP);
